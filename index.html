@@ -80,6 +80,7 @@
             color: white; font-size: 1.5rem; cursor: pointer;
             margin-top: 20px; transition: 0.3s;
             box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+            display: flex; align-items: center; justify-content: center;
         }
 
         .nishi-btn { background: var(--nishi-pink); }
@@ -132,35 +133,41 @@
         const GOAL = 1000;
         let secretClicks = 0;
         let user = localStorage.getItem('meter_user');
-        let data = {
-            nishi: parseInt(localStorage.getItem('m_nishi')) || 0,
-            charan: parseInt(localStorage.getItem('m_charan')) || 0
-        };
 
         function setIdentity(id) {
             localStorage.setItem('meter_user', id);
             location.reload();
         }
 
-        function updateUI() {
-            const nPerc = (data.nishi / GOAL) * 100;
-            const cPerc = (data.charan / GOAL) * 100;
-            
-            document.getElementById('nishiLiquid').style.height = Math.min(nPerc, 100) + '%';
-            document.getElementById('charanLiquid').style.height = Math.min(cPerc, 100) + '%';
-            
-            document.getElementById('nishiVal').innerText = data.nishi;
-            document.getElementById('charanVal').innerText = data.charan;
+        async function syncScores() {
+            try {
+                const res = await fetch('/api/get-scores');
+                const data = await res.json();
+                
+                const nPerc = (data.nishi / GOAL) * 100;
+                const cPerc = (data.charan / GOAL) * 100;
+                
+                document.getElementById('nishiLiquid').style.height = Math.min(nPerc, 100) + '%';
+                document.getElementById('charanLiquid').style.height = Math.min(cPerc, 100) + '%';
+                
+                document.getElementById('nishiVal').innerText = data.nishi;
+                document.getElementById('charanVal').innerText = data.charan;
+            } catch (e) {
+                console.error("Sync failed. Ensure /api/get-scores exists.");
+            }
         }
 
-        function addMiss(who) {
-            data[who]++;
-            localStorage.setItem('m_' + who, data[who]);
-            updateUI();
+        async function addMiss(who) {
+            // Optimistic update for instant feedback
+            const el = document.getElementById(who + 'Val');
+            el.innerText = parseInt(el.innerText) + 1;
             
-            const btn = document.getElementById(who + 'Btn');
-            btn.style.transform = "scale(1.3)";
-            setTimeout(() => btn.style.transform = "scale(1)", 150);
+            try {
+                await fetch(`/api/update-score?who=${who}`);
+                syncScores();
+            } catch (e) {
+                console.error("Update failed.");
+            }
         }
 
         function handleSecret() {
@@ -177,10 +184,14 @@
 
         if(user) {
             document.getElementById('overlay').classList.add('hidden');
+            // User can only click the OTHER person's button
             document.getElementById(user + 'Btn').disabled = true;
             document.getElementById(user + 'Btn').innerHTML = "🔒";
         }
-        updateUI();
+
+        // Initial sync and then every 5 seconds
+        syncScores();
+        setInterval(syncScores, 5000);
     </script>
 </body>
 </html>
